@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ElektroMarket — Smart Store</title>
+  <meta name="description" content="ElektroMarket — buy and sell electronics in real time."/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     BUYER SECTION
+     ══════════════════════════════════════════════════════════ -->
+<div id="buyer-section" style="display:none" class="h-screen w-screen overflow-hidden flex items-center justify-center p-0 lg:p-6 text-slate-800">
+  <div class="flex flex-col lg:flex-row w-full h-full max-w-[1400px] bg-slate-50 lg:rounded-[2rem] shadow-2xl shadow-indigo-900/10 overflow-hidden relative">
+
+    <!-- Sidebar -->
+    <aside class="bg-white border-b lg:border-b-0 lg:border-r border-slate-200 w-full lg:w-72 flex-shrink-0 flex flex-row lg:flex-col justify-between p-4 lg:p-6 z-30">
+      <div>
+        <!-- Brand -->
+        <div class="flex items-center gap-3 mb-0 lg:mb-10">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+            <i class="fas fa-microchip text-xl"></i>
+          </div>
+          <div class="hidden lg:block">
+            <div class="text-xl font-extrabold text-slate-900 tracking-tight">ElektroMarket</div>
+            <div class="text-xs font-semibold text-indigo-500 uppercase tracking-widest" id="buyer-username-display">Buyer</div>
+          </div>
+        </div>
+        <!-- Nav -->
+        <nav class="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible no-scrollbar">
+          <button id="nav-buyer" onclick="switchView('buyer')" class="nav-btn active">
+            <i class="fas fa-shopping-bag w-5 text-center"></i><span class="hidden lg:inline">Find Items</span>
+          </button>
+          <button id="nav-history" onclick="switchView('history')" class="nav-btn">
+            <i class="fas fa-receipt w-5 text-center"></i><span class="hidden lg:inline">Order History</span>
+          </button>
+          <button id="nav-cart" onclick="switchView('cart')" class="nav-btn">
+            <i class="fas fa-shopping-cart w-5 text-center"></i><span class="hidden lg:inline">My Cart</span>
+          </button>
+        </nav>
+      </div>
+      <!-- Logout -->
+      <button onclick="logout()" class="hidden lg:flex items-center gap-2 text-xs text-slate-400 hover:text-red-500 font-semibold transition-colors mt-4 px-3 py-2 rounded-xl hover:bg-red-50">
+        <i class="fas fa-sign-out-alt"></i> Sign Out
+      </button>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 relative flex flex-col overflow-hidden bg-[#f8fafc]">
+
+      <!-- FIND ITEMS VIEW -->
+      <div id="buyer-view" class="flex-1 flex flex-col h-full relative overflow-hidden">
+        <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03] pointer-events-none z-0"></div>
+        <div id="chat-area" class="flex-1 overflow-y-auto p-4 lg:p-10 space-y-6 z-10 scroll-smooth custom-scroll">
+          <div class="msg-bot msg-bubble flex gap-4">
+            <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+              <i class="fas fa-robot"></i>
+            </div>
+            <div>
+              <div class="text-[12px] font-bold text-indigo-500 uppercase tracking-widest mb-1">AI Assistant</div>
+              Hello! What electronics are you looking for today? Just type below (e.g. "1 MacBook Pro M2" or "Logitech wireless mouse") and I'll broadcast your request to nearby sellers!
+            </div>
+          </div>
+        </div>
+        <div class="w-full p-4 lg:p-6 z-20 shrink-0">
+          <div class="max-w-3xl mx-auto">
+            <form onsubmit="event.preventDefault(); handleFormAction();" class="input-pill flex items-center gap-3 p-2 rounded-[2rem] bg-white/95 backdrop-blur-md shadow-xl border border-slate-100">
+              <div class="pl-4 text-slate-400"><i class="fas fa-search"></i></div>
+              <input type="text" id="user-input" placeholder="Type what you're looking for..." class="flex-1 bg-transparent text-slate-800 py-3 focus:outline-none placeholder:text-slate-400 font-medium"/>
+              <button type="submit" id="send-btn" class="bg-indigo-600 text-white h-12 w-12 rounded-full font-bold hover:bg-indigo-700 active:scale-95 transition-all shadow-md flex items-center justify-center shrink-0">
+                <i class="fas fa-paper-plane"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- ORDER HISTORY VIEW -->
+      <div id="history-container" class="hidden flex-1 flex-col h-full bg-slate-50 p-4 lg:p-10 overflow-y-auto custom-scroll">
+        <div class="max-w-4xl mx-auto w-full">
+          <h2 class="text-3xl font-extrabold text-slate-800 mb-2">Transaction History</h2>
+          <p class="text-slate-500 mb-8">All confirmed orders.</p>
+          <div id="history-list" class="space-y-4"></div>
+        </div>
+      </div>
+
+      <!-- CART VIEW -->
+      <div id="cart-container" class="hidden flex-1 flex-col h-full bg-slate-50 relative overflow-hidden">
+        <div class="flex-1 overflow-y-auto custom-scroll p-4 lg:p-10 z-10">
+          <div class="max-w-4xl mx-auto w-full">
+            <div class="flex justify-between items-end mb-6">
+              <div>
+                <h2 class="text-3xl font-extrabold text-slate-800 mb-2">My Cart</h2>
+                <p class="text-slate-500">Select items to checkout.</p>
+              </div>
+              <button onclick="deleteSelectedCartItems()" class="text-red-500 hover:text-red-700 font-bold text-sm bg-red-50 px-4 py-2 rounded-lg transition hidden shadow-sm" id="btn-delete-cart">
+                <i class="fas fa-trash-alt mr-1"></i> Remove Selected
+              </button>
+            </div>
+            <div id="cart-list" class="space-y-4 pb-4"></div>
+          </div>
+        </div>
+        <div class="w-full bg-white/95 backdrop-blur-md border-t border-slate-200 p-4 lg:py-6 lg:px-10 z-20 shrink-0 shadow-[0_-15px_40px_-15px_rgba(0,0,0,0.05)]">
+          <div class="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
+              <div class="flex items-center gap-3 bg-slate-50 py-2 px-4 rounded-xl border border-slate-100">
+                <input type="checkbox" id="cart-check-all" onchange="toggleAllCartItems(this)" class="w-5 h-5 rounded text-indigo-600 cursor-pointer border-slate-300"/>
+                <label for="cart-check-all" class="font-bold text-slate-700 cursor-pointer select-none">Select All</label>
+              </div>
+            </div>
+            <div class="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-end">
+              <div class="text-right">
+                <div class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Total Price</div>
+                <div class="text-2xl font-black text-indigo-600 leading-none" id="cart-total-price">Rp 0</div>
+              </div>
+              <button onclick="processCartCheckout()" id="btn-checkout" class="bg-indigo-600 text-white font-bold py-3.5 px-8 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" disabled>
+                Checkout <span class="bg-white/20 px-2 py-0.5 rounded-md text-sm" id="cart-selected-count">0</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     SELLER SECTION
+     ══════════════════════════════════════════════════════════ -->
+<div id="seller-section" style="display:none">
+
+  <!-- Mobile topbar (visible on small screens only) -->
+  <div class="mobile-topbar">
+    <div class="brand">
+      <div class="brand-icon"><i class="fas fa-microchip"></i></div>
+      <div>
+        <div class="brand-name">ElektroMarket</div>
+        <div class="brand-role">Seller Dashboard</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="live-badge" id="live-badge-mobile"><span class="live-dot"></span><span>Live</span></div>
+      <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Open sidebar"><i class="fas fa-bars"></i></button>
+    </div>
+  </div>
+
+  <!-- Sidebar overlay (tap to close on mobile) -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+  <div class="app-shell">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="seller-sidebar">
+      <header class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon"><i class="fas fa-microchip"></i></div>
+          <div>
+            <div class="brand-name">ElektroMarket</div>
+            <div class="brand-role">Seller Dashboard</div>
+          </div>
+        </div>
+        <div class="live-badge" id="live-badge">
+          <span class="live-dot"></span>
+          <span id="live-label">Connecting…</span>
+        </div>
+      </header>
+
+      <!-- Sidebar nav: Requests / History toggle -->
+      <div class="flex gap-1 p-3 border-b border-slate-100" style="z-index:20;position:relative;">
+        <button type="button" id="selnav-requests" onclick="switchSellerView('requests')" class="selnav-btn active flex-1" style="z-index:20;position:relative;">
+          <i class="fas fa-inbox mr-1.5"></i>Requests
+        </button>
+        <button type="button" id="selnav-history" onclick="switchSellerView('history')" class="selnav-btn flex-1" style="z-index:20;position:relative;">
+          <i class="fas fa-receipt mr-1.5"></i>History
+        </button>
+      </div>
+
+      <!-- Requests panel (default visible) -->
+      <div id="seller-requests-panel" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+        <div class="sidebar-search">
+          <i class="fas fa-search search-icon"></i>
+          <input type="text" id="search-input" placeholder="Search requests…" oninput="filterRequests(this.value)" autocomplete="off"/>
+        </div>
+        <div class="request-list custom-scroll" id="request-list">
+          <div class="empty-state" id="empty-state">
+            <div class="empty-icon"><i class="fas fa-satellite-dish"></i></div>
+            <p class="empty-title">Scanning Requests…</p>
+            <p class="empty-sub">New buyer requests will appear here automatically.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- History panel (hidden by default) -->
+      <div id="seller-history-panel" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+        <div class="seller-history-list custom-scroll" id="seller-history-list">
+          <div class="p-6 text-center text-slate-400 text-sm">
+            <i class="fas fa-receipt mr-2"></i>Click History tab to load your sales.
+          </div>
+        </div>
+      </div>
+
+      <footer class="sidebar-footer">
+        <span class="text-xs text-slate-400 font-semibold" id="seller-username-display">Seller</span>
+        <div class="flex items-center gap-3">
+          <span id="req-count-badge" class="req-badge hidden">0</span>
+          <button onclick="logout()" title="Sign Out" class="text-slate-400 hover:text-red-500 transition-colors text-sm">
+            <i class="fas fa-sign-out-alt"></i>
+          </button>
+        </div>
+      </footer>
+    </aside>
+
+    <!-- Detail panel -->
+    <main class="detail-panel">
+      <!-- Idle state -->
+      <div class="idle-panel" id="idle-panel">
+        <div class="idle-illustration"><i class="fas fa-store-alt"></i></div>
+        <h2 class="idle-title">Select a Request</h2>
+        <p class="idle-sub">Click a buyer request on the left to view details and send your best offer.</p>
+        <div class="idle-stats" id="idle-stats">
+          <div class="stat-chip"><i class="fas fa-clock"></i><span id="stat-pending">0 Active Requests</span></div>
+          <div class="stat-chip"><i class="fas fa-bolt"></i><span>Updates every 3s</span></div>
+        </div>
+      </div>
+
+      <!-- Active detail -->
+      <div class="active-panel hidden" id="active-panel">
+        <div class="detail-header" id="detail-header"></div>
+        <div class="detail-body custom-scroll">
+          <!-- Map -->
+          <section class="map-section">
+            <div class="section-label"><i class="fas fa-map-marker-alt text-indigo-500"></i> Buyer Location</div>
+            <div class="map-wrapper">
+              <div id="detail-map"></div>
+              <div class="map-overlay-badge" id="map-badge"><i class="fas fa-crosshairs"></i> Live Location</div>
+            </div>
+          </section>
+          <!-- Offer Form -->
+          <section class="form-section">
+            <div class="section-label"><i class="fas fa-tag text-indigo-500"></i> Send Your Offer</div>
+            <form id="offer-form" onsubmit="submitOffer(event)" enctype="multipart/form-data" class="offer-form" novalidate>
+              <input type="hidden" id="form-request-id" name="request_id"/>
+              <input type="hidden" id="form-total-qty" name="total_qty" value="1"/>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label class="form-label">Store Name <span class="required">*</span></label>
+                  <div class="input-wrapper">
+                    <i class="fas fa-store input-icon"></i>
+                    <input type="text" name="seller" id="inp-seller" placeholder="e.g. Jaya Electronics" required class="form-input with-icon"/>
+                  </div>
+                </div>
+                <div class="form-field">
+                  <label class="form-label">Product Spec <span class="required">*</span></label>
+                  <div class="input-wrapper">
+                    <i class="fas fa-box input-icon"></i>
+                    <input type="text" name="product" id="inp-product" placeholder="e.g. Samsung S23 Ultra 256GB" required class="form-input with-icon"/>
+                  </div>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label class="form-label">Unit Price (Rp) <span class="required">*</span></label>
+                  <div class="input-wrapper">
+                    <span class="input-prefix">Rp</span>
+                    <input type="number" name="unit_price" id="inp-price" placeholder="0" min="0" required class="form-input with-prefix"/>
+                    <button type="button" id="smart-price-btn" onclick="getSmartPrice()" class="smart-price-btn" title="Check Market Price">
+                      <i class="fas fa-magic" id="smart-price-icon"></i>
+                    </button>
+                  </div>
+                  <div id="price-suggestion" class="price-suggestion hidden"></div>
+                </div>
+                <div class="form-field">
+                  <label class="form-label">WhatsApp Number <span class="required">*</span></label>
+                  <div class="input-wrapper">
+                    <i class="fab fa-whatsapp input-icon text-green-500"></i>
+                    <input type="text" name="contact" id="inp-contact" placeholder="628123456789" required class="form-input with-icon"/>
+                  </div>
+                </div>
+              </div>
+              <div class="form-field">
+                <label class="form-label">Product Photo <span class="optional">(Optional)</span></label>
+                <div class="upload-area" id="upload-area">
+                  <input type="file" name="product_image" id="file-input" accept="image/*" onchange="previewImage(event)" class="hidden"/>
+                  <div class="upload-placeholder" id="upload-placeholder">
+                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                    <span class="upload-text">Click or drag a photo here</span>
+                    <span class="upload-hint">JPG, PNG — max 5 MB</span>
+                  </div>
+                  <div class="upload-preview hidden" id="upload-preview">
+                    <img id="preview-img" src="" alt="Preview" class="preview-img"/>
+                    <div class="preview-info">
+                      <span id="preview-name" class="preview-name">photo.jpg</span>
+                      <button type="button" onclick="clearImage()" class="preview-remove"><i class="fas fa-trash-alt"></i> Remove</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button type="submit" id="submit-btn" class="submit-btn">
+                <i class="fas fa-paper-plane"></i>
+                <span id="submit-label">Send Offer</span>
+              </button>
+              <div id="success-flash" class="success-flash hidden">
+                <i class="fas fa-check-circle"></i> Offer sent successfully!
+              </div>
+            </form>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast hidden">
+    <i class="fas fa-bell toast-icon"></i>
+    <span id="toast-msg">New request received!</span>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
