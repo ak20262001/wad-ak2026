@@ -1,9 +1,24 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 0); // Disable HTML error output which breaks JSON
+ini_set('log_errors', 1);
+
 header('Content-Type: application/json');
 header("Access-Control-Allow-Origin: *");
 
-$conn = new mysqli("sql100.infinityfree.com", "if0_41758166", "Presuniv2026", "if0_41758166_akchatbot");
-if ($conn->connect_error) { die(json_encode(["error" => "Connection failed"])); }
+register_shutdown_function(function() {
+    $e = error_get_last();
+    if ($e !== null) {
+        $msg = $e['message'];
+        echo json_encode(["status" => "error", "error" => "PHP Shutdown: $msg"]);
+    }
+});
+
+$conn = @new mysqli("sql304.infinityfree.com", "if0_41824912", "Presuniv2026", "if0_41824912_elektromarket");
+if ($conn->connect_error) { 
+    echo json_encode(["status" => "error", "error" => "DB Error: " . $conn->connect_error]); 
+    exit; 
+}
 
 $action = $_REQUEST['action'] ?? '';
 
@@ -13,27 +28,44 @@ $conn->query("DELETE FROM requests WHERE created_at < NOW() - INTERVAL 12 HOUR")
 if ($action === 'create_request') {
     // Use the real buyer username sent from the frontend; fall back to 'Buyer' if missing
     $buyer = trim($_POST['buyer_name'] ?? '') ?: 'Buyer';
-    $desc = $_POST['description'] ?? '';
-    $loc = $_POST['location'] ?? null;
+    $buyer_phone = trim($_POST['buyer_phone'] ?? '') ?: 'Unknown';
+    $desc = trim($_POST['description'] ?? '');
+    $loc = trim($_POST['location'] ?? '') ?: 'Unknown';
+    
+    if ($desc === '') {
+        echo json_encode(['error' => 'Description is required']); 
+        exit;
+    }
     
     $parsed = [];
-    $desc_clean = trim(strtolower($desc));
+    $desc_clean = strtolower($desc);
     $desc_clean = preg_replace('/^(saya\s+)?(mau|ingin|beli|pesan|cari|mencari|i want\s+(to\s+)?buy|i want|buy|tolong\s+)\s+/i', '', $desc_clean);
     
     if (preg_match('/(\d+)\s*(?:unit|pcs|buah|biji)\b/i', $desc_clean, $matches)) {
         $qty = (int)$matches[1];
-        $item_name = trim(preg_replace('/(\d+)\s*(?:unit|pcs|buah|biji)\b/i', '', $desc_clean));
+        $item_name = trim(preg_replace('/(\d+)\s*(?:unit|pcs|buah|biji)\b/i', '', $desc_clean), " ,.-");
         $parsed[] = ['item' => $item_name, 'qty' => $qty];
-    } elseif (preg_match('/^(\d+)\s+(.+)$/i', $desc_clean, $matches)) {
-        $parsed[] = ['item' => trim($matches[2]), 'qty' => (int)$matches[1]];
+    } elseif (preg_match('/^(\d+)\s*[,.-]?\s+(.+)$/i', $desc_clean, $matches)) {
+        $parsed[] = ['item' => trim($matches[2], " ,.-"), 'qty' => (int)$matches[1]];
     } else {
-        $parsed[] = ['item' => $desc_clean ?: trim($desc), 'qty' => 1];
+        $parsed[] = ['item' => trim($desc_clean, " ,.-") ?: trim($desc), 'qty' => 1];
     }
     
-    $parsed_json = json_encode($parsed);
-    $stmt = $conn->prepare("INSERT INTO requests (buyer_name, description, parsed_items, location) VALUES (?, ?, ?, ?)");
-    $stmt->bind_param("ssss", $buyer, $desc, $parsed_json, $loc);
-    $stmt->execute();
+    $parsed_json = json_encode($parsed) ?: '[]';
+    
+    $stmt = $conn->prepare("INSERT INTO requests (buyer_name, buyer_phone, description, parsed_items, location) VALUES (?, ?, ?, ?, ?)");
+    if (!$stmt) { 
+        error_log("Prepare failed: " . $conn->error);
+        echo json_encode(['error' => 'System error: Unable to prepare request.']); 
+        exit; 
+    }
+    
+    $stmt->bind_param("sssss", $buyer, $buyer_phone, $desc, $parsed_json, $loc);
+    if (!$stmt->execute()) {
+        error_log("Execute failed: " . $stmt->error);
+        echo json_encode(['error' => 'System error: Unable to submit request.']); 
+        exit; 
+    }
     
     echo json_encode(['status' => 'success', 'request_id' => $stmt->insert_id]);
     exit;
@@ -50,6 +82,7 @@ if ($action === 'close_request') {
 if ($action === 'add_offer') {
     $req_id  = (int)($_POST['request_id'] ?? 0);
     $seller  = $_POST['seller_name'] ?? 'Unknown';
+    $seller_phone = $_POST['seller_phone'] ?? '';
     $product = $_POST['product_name'] ?? 'Unknown';
     $price   = (int)($_POST['price'] ?? 0);
     $contact = $_POST['contact'] ?? '';
@@ -83,13 +116,19 @@ if ($action === 'add_offer') {
         }
     }
 
-    $stmt = $conn->prepare("INSERT INTO offers (request_id, seller_name, product_name, price, contact, image_path) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("ississ", $req_id, $seller, $product, $price, $contact, $image_path);
+    $stmt = $conn->prepare("INSERT INTO offers (request_id, seller_name, seller_phone, product_name, price, contact, image_path) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    if (!$stmt) { 
+        error_log("Prepare failed: " . $conn->error);
+        echo json_encode(['error' => 'System error: Unable to prepare offer.']); 
+        exit; 
+    }
+    $stmt->bind_param("isssiss", $req_id, $seller, $seller_phone, $product, $price, $contact, $image_path);
     
     if ($stmt->execute()) {
         echo json_encode(['status' => 'success', 'upload_error' => $upload_error]);
     } else {
-        echo json_encode(['error' => 'Execute Error: ' . $stmt->error]);
+        error_log("Execute Error: " . $stmt->error);
+        echo json_encode(['error' => 'System error: Unable to execute offer.']);
     }
     exit;
 }
@@ -104,12 +143,19 @@ if ($action === 'get_offers') {
 
 if ($action === 'accept_offer') {
     $offer_id = (int)($_POST['offer_id'] ?? 0);
+    $buyer_name = trim($_POST['buyer_name'] ?? '') ?: 'Buyer';
+    $buyer_phone = trim($_POST['buyer_phone'] ?? '');
     $res = $conn->query("SELECT o.*, r.parsed_items, r.location FROM offers o JOIN requests r ON o.request_id = r.id WHERE o.id = $offer_id");
     $offer = $res->fetch_assoc();
 
     if ($offer) {
-        $stmt = $conn->prepare("INSERT INTO orders (buyer_name, seller_name, product_name, total_price, location, image_path) VALUES ('Buyer', ?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssiss", $offer['seller_name'], $offer['product_name'], $offer['price'], $offer['location'], $offer['image_path']);
+        $stmt = $conn->prepare("INSERT INTO orders (buyer_name, buyer_phone, seller_name, seller_phone, product_name, total_price, location, image_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        if (!$stmt) { 
+            error_log("Prepare failed: " . $conn->error);
+            echo json_encode(['error' => 'System error: Unable to prepare order.']); 
+            exit; 
+        }
+        $stmt->bind_param("sssssiss", $buyer_name, $buyer_phone, $offer['seller_name'], $offer['seller_phone'], $offer['product_name'], $offer['price'], $offer['location'], $offer['image_path']);
         $stmt->execute();
         
         $req_id = $offer['request_id'];
@@ -128,7 +174,8 @@ if ($action === 'accept_offer') {
 }
 
 if ($action === 'get_orders') {
-    $res = $conn->query("SELECT * FROM orders ORDER BY created_at DESC");
+    $buyer_phone = $conn->real_escape_string($_GET['buyer_phone'] ?? '');
+    $res = $conn->query("SELECT * FROM orders WHERE buyer_phone = '$buyer_phone' ORDER BY created_at DESC");
     echo json_encode($res->fetch_all(MYSQLI_ASSOC));
     exit;
 }
@@ -230,10 +277,20 @@ if ($action === 'checkout_cart') {
     $stmt->execute();
 
     // Migrasi data ke Orders untuk konsistensi riwayat pesanan global (Denormalisasi terukur)
+    $buyer_name = $conn->real_escape_string($_POST['buyer_name'] ?? 'Buyer');
     foreach($items as $item) {
+        $seller_name_esc = $conn->real_escape_string($item['seller_name']);
+        $sp_res = $conn->query("SELECT seller_phone FROM offers WHERE seller_name = '$seller_name_esc' LIMIT 1");
+        if ($sp_res && $sp_res->num_rows > 0) {
+            $item_seller_phone = $sp_res->fetch_assoc()['seller_phone'];
+        } else {
+            $sp_res2 = $conn->query("SELECT seller_phone FROM orders WHERE seller_name = '$seller_name_esc' LIMIT 1");
+            $item_seller_phone = ($sp_res2 && $sp_res2->num_rows > 0) ? $sp_res2->fetch_assoc()['seller_phone'] : "";
+        }
+
         $total_price_item = $item['price'] * $item['quantity'];
-        $stmt_ord = $conn->prepare("INSERT INTO orders (buyer_name, seller_name, product_name, total_price, image_path) VALUES ('Buyer', ?, ?, ?, ?)");
-        $stmt_ord->bind_param("ssis", $item['seller_name'], $item['product_name'], $total_price_item, $item['image_path']);
+        $stmt_ord = $conn->prepare("INSERT INTO orders (buyer_name, buyer_phone, seller_name, seller_phone, product_name, total_price, image_path) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt_ord->bind_param("sssssis", $buyer_name, $contact, $item['seller_name'], $item_seller_phone, $item['product_name'], $total_price_item, $item['image_path']);
         $stmt_ord->execute();
     }
 
@@ -270,10 +327,10 @@ if ($action === 'delete_order') {
 
 // Get all offers sent by this seller (for seller history)
 if ($action === 'get_seller_offers') {
-    // Try to get seller_username from cookie or GET param
-    $seller_username = $conn->real_escape_string($_GET['seller_username'] ?? $_GET['seller_name'] ?? '');
-    if (empty($seller_username)) { 
-        echo json_encode(['error' => 'seller_username/seller_name is empty']);
+    // Try to get seller_phone from GET param
+    $seller_phone = $conn->real_escape_string($_GET['seller_phone'] ?? '');
+    if (empty($seller_phone)) { 
+        echo json_encode(['error' => 'seller_phone is empty']);
         exit;
     }
     
@@ -281,19 +338,17 @@ if ($action === 'get_seller_offers') {
     
     // DEBUG: Log what we're searching for
     $debug_info = [
-        'searching_for' => $seller_username,
+        'searching_for' => $seller_phone,
         'get_params' => $_GET,
         'post_params' => $_POST
     ];
     
-    // Get pending offers - filter by ANY seller_name (store name) from this username
-    // For now, we'll match by exact username in seller_name field
-    // In future, add seller_username column to offers table
+    // Get pending offers - filter by seller_phone
     $offers_query = "SELECT o.id, o.product_name, o.price, o.image_path, o.created_at, 
                             IFNULL(r.buyer_name, 'Buyer') as buyer_name, r.description, 'pending' as status
                      FROM offers o 
                      LEFT JOIN requests r ON o.request_id = r.id 
-                     WHERE o.seller_name LIKE '%$seller_username%' OR o.seller_name = '$seller_username'
+                     WHERE o.seller_phone = '$seller_phone'
                      ORDER BY o.created_at DESC";
     
     $offers_result = $conn->query($offers_query);
@@ -315,7 +370,7 @@ if ($action === 'get_seller_offers') {
     $orders_query = "SELECT id, product_name, total_price as price, image_path, created_at,
                             buyer_name, null as description, 'completed' as status
                      FROM orders 
-                     WHERE seller_name LIKE '%$seller_username%' OR seller_name = '$seller_username'
+                     WHERE seller_phone = '$seller_phone'
                      ORDER BY created_at DESC";
     
     $orders_result = $conn->query($orders_query);
@@ -340,7 +395,7 @@ if ($action === 'get_seller_offers') {
     
     echo json_encode([
         'success' => true, 
-        'seller' => $seller_username, 
+        'seller_phone' => $seller_phone, 
         'count' => count($all_items), 
         'offers_count' => $offers_count,
         'orders_count' => $orders_count,

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ElektroMarket — Seller Dashboard</title>
+  <meta name="description" content="ElektroMarket — sell electronics in real time." />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <div id="seller-section">
+
+    <!-- Mobile topbar (visible on small screens only) -->
+    <div class="mobile-topbar">
+      <div class="brand">
+        <div class="brand-icon"><i class="fas fa-microchip"></i></div>
+        <div>
+          <div class="brand-name">ElektroMarket</div>
+          <div class="brand-role">Seller Dashboard</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="live-badge" id="live-badge-mobile"><span class="live-dot"></span><span>Live</span></div>
+        <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Open sidebar"><i
+            class="fas fa-bars"></i></button>
+        <button onclick="openSettingsModal()"
+          class="text-slate-400 hover:text-indigo-600 transition-colors p-2 text-xl block lg:hidden">
+          <i class="fas fa-cog"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Sidebar overlay (tap to close on mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <div class="app-shell relative">
+      <!-- Disabled Overlay -->
+      <div id="disabled-overlay"
+        class="absolute inset-0 z-40 bg-slate-100/50 backdrop-blur-[2px] hidden pointer-events-auto flex items-center justify-center">
+        <div class="bg-white/90 p-6 rounded-2xl shadow-lg text-center max-w-sm mx-4">
+          <i class="fas fa-store-slash text-4xl text-slate-300 mb-3"></i>
+          <h3 class="font-bold text-slate-800 text-lg mb-2">Profile Required</h3>
+          <p class="text-sm text-slate-500">Please complete your store profile to view requests and send offers.</p>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <aside class="sidebar" id="seller-sidebar">
+        <header class="sidebar-header">
+          <div class="brand">
+            <div class="brand-icon"><i class="fas fa-microchip"></i></div>
+            <div>
+              <div class="brand-name">ElektroMarket</div>
+              <div class="brand-role">Seller Dashboard</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="live-badge" id="live-badge">
+              <span class="live-dot"></span>
+              <span id="live-label">Connecting…</span>
+            </div>
+            <button onclick="openSettingsModal()"
+              class="text-slate-400 hover:text-indigo-600 transition-colors p-2 text-xl hidden lg:block"
+              title="Settings">
+              <i class="fas fa-cog"></i>
+            </button>
+          </div>
+        </header>
+
+        <!-- Sidebar nav: Requests / History toggle -->
+        <div class="flex gap-1 p-3 border-b border-slate-100" style="z-index:20;position:relative;">
+          <button type="button" id="selnav-requests" onclick="switchSellerView('requests')"
+            class="selnav-btn active flex-1" style="z-index:20;position:relative;">
+            <i class="fas fa-inbox mr-1.5"></i>Requests
+          </button>
+          <button type="button" id="selnav-history" onclick="switchSellerView('history')" class="selnav-btn flex-1"
+            style="z-index:20;position:relative;">
+            <i class="fas fa-receipt mr-1.5"></i>History
+          </button>
+        </div>
+
+        <!-- Requests panel (default visible) -->
+        <div id="seller-requests-panel" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+          <div class="sidebar-search">
+            <i class="fas fa-search search-icon"></i>
+            <input type="text" id="search-input" placeholder="Search requests…" oninput="filterRequests(this.value)"
+              autocomplete="off" />
+          </div>
+          <div class="request-list custom-scroll" id="request-list">
+            <div class="empty-state" id="empty-state">
+              <div class="empty-icon"><i class="fas fa-satellite-dish"></i></div>
+              <p class="empty-title">Scanning Requests…</p>
+              <p class="empty-sub">New buyer requests will appear here automatically.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- History panel (hidden by default) -->
+        <div id="seller-history-panel" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+          <div class="seller-history-list custom-scroll" id="seller-history-list">
+            <div class="p-6 text-center text-slate-400 text-sm">
+              <i class="fas fa-receipt mr-2"></i>Click History tab to load your sales.
+            </div>
+          </div>
+        </div>
+
+        <footer class="sidebar-footer">
+          <span class="text-xs text-slate-400 font-semibold" id="seller-username-display">Seller</span>
+          <div class="flex items-center gap-3">
+            <span id="req-count-badge" class="req-badge hidden">0</span>
+            <!-- Settings icon also in footer on mobile just in case -->
+            <button onclick="openSettingsModal()"
+              class="text-slate-400 hover:text-indigo-600 transition-colors p-2 text-xl block lg:hidden"
+              title="Settings">
+              <i class="fas fa-cog"></i>
+            </button>
+          </div>
+        </footer>
+      </aside>
+
+      <!-- Detail panel -->
+      <main class="detail-panel">
+        <!-- Idle state -->
+        <div class="idle-panel" id="idle-panel">
+          <div class="idle-illustration"><i class="fas fa-store-alt"></i></div>
+          <h2 class="idle-title">Select a Request</h2>
+          <p class="idle-sub">Click a buyer request on the left to view details and send your best offer.</p>
+          <div class="idle-stats" id="idle-stats">
+            <div class="stat-chip"><i class="fas fa-clock"></i><span id="stat-pending">0 Active Requests</span></div>
+            <div class="stat-chip"><i class="fas fa-bolt"></i><span>Updates every 3s</span></div>
+          </div>
+        </div>
+
+        <!-- Active detail -->
+        <div class="active-panel hidden" id="active-panel">
+          <div class="detail-header" id="detail-header"></div>
+          <div class="detail-body custom-scroll">
+            <!-- Map -->
+            <section class="map-section">
+              <div class="section-label"><i class="fas fa-map-marker-alt text-indigo-500"></i> Buyer Location</div>
+              <div class="map-wrapper">
+                <div id="detail-map"></div>
+                <div class="map-overlay-badge" id="map-badge"><i class="fas fa-crosshairs"></i> Live Location</div>
+              </div>
+            </section>
+            <!-- Offer Form -->
+            <section class="form-section">
+              <div class="section-label"><i class="fas fa-tag text-indigo-500"></i> Send Your Offer</div>
+              <form id="offer-form" onsubmit="submitOffer(event)" enctype="multipart/form-data" class="offer-form"
+                novalidate>
+                <input type="hidden" id="form-request-id" name="request_id" />
+                <input type="hidden" id="form-total-qty" name="total_qty" value="1" />
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label class="form-label">Store Name <span class="required">*</span></label>
+                    <div class="input-wrapper">
+                      <i class="fas fa-store input-icon"></i>
+                      <input type="text" name="seller_name" id="inp-seller" placeholder="e.g. Jaya Electronics" required
+                        class="form-input with-icon" readonly />
+                    </div>
+                  </div>
+                  <div class="form-field">
+                    <label class="form-label">WhatsApp Number <span class="required">*</span></label>
+                    <div class="input-wrapper">
+                      <i class="fab fa-whatsapp input-icon"></i>
+                      <input type="text" name="seller_phone" id="inp-seller-phone" placeholder="e.g. 628123456789"
+                        required class="form-input with-icon" readonly />
+                    </div>
+                  </div>
+                </div>
+                <div class="form-field mt-3">
+                  <label class="form-label">Product Spec <span class="required">*</span></label>
+                  <div class="input-wrapper">
+                    <i class="fas fa-box input-icon"></i>
+                    <input type="text" name="product_name" id="inp-product" placeholder="e.g. Samsung S23 Ultra 256GB"
+                      required class="form-input with-icon" />
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label class="form-label">Unit Price (Rp) <span class="required">*</span></label>
+                    <div class="input-wrapper">
+                      <span class="input-prefix">Rp</span>
+                      <input type="number" name="price" id="inp-price" placeholder="0" min="0" required
+                        class="form-input with-prefix" />
+                      <button type="button" id="smart-price-btn" onclick="getSmartPrice()" class="smart-price-btn"
+                        title="Check Market Price">
+                        <i class="fas fa-magic" id="smart-price-icon"></i>
+                      </button>
+                    </div>
+                    <div id="price-suggestion" class="price-suggestion hidden"></div>
+                  </div>
+                </div>
+                <div class="form-field">
+                  <label class="form-label">Product Photo <span class="optional">(Optional)</span></label>
+                  <div class="upload-area" id="upload-area">
+                    <input type="file" name="product_image" id="file-input" accept="image/*"
+                      onchange="previewImage(event)" class="hidden" />
+                    <div class="upload-placeholder" id="upload-placeholder">
+                      <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                      <span class="upload-text">Click or drag a photo here</span>
+                      <span class="upload-hint">JPG, PNG — max 5 MB</span>
+                    </div>
+                    <div class="upload-preview hidden" id="upload-preview">
+                      <img id="preview-img" src="" alt="Preview" class="preview-img" />
+                      <div class="preview-info">
+                        <span id="preview-name" class="preview-name">photo.jpg</span>
+                        <button type="button" onclick="clearImage()" class="preview-remove"><i
+                            class="fas fa-trash-alt"></i> Remove</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <button type="submit" id="submit-btn" class="submit-btn">
+                  <i class="fas fa-paper-plane"></i>
+                  <span id="submit-label">Send Offer</span>
+                </button>
+                <div id="success-flash" class="success-flash hidden">
+                  <i class="fas fa-check-circle"></i> Offer sent successfully!
+                </div>
+              </form>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast hidden">
+      <i class="fas fa-bell toast-icon"></i>
+      <span id="toast-msg">New request received!</span>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal"
+    class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div
+      class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden transform scale-95 opacity-0 transition-all duration-300"
+      id="settings-modal-content">
+      <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <h3 class="font-extrabold text-slate-800 text-lg flex items-center gap-2"><i
+            class="fas fa-store text-indigo-500"></i> Store Profile</h3>
+        <button onclick="closeSettingsModal()"
+          class="text-slate-400 hover:text-red-500 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="p-6">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Store Name</label>
+            <div class="relative">
+              <i class="fas fa-store absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              <input type="text" id="setting-name"
+                class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700 font-medium"
+                placeholder="Jaya Electronics">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">WhatsApp Number</label>
+            <div class="relative">
+              <i class="fab fa-whatsapp absolute left-4 top-1/2 -translate-y-1/2 text-green-500"></i>
+              <input type="text" id="setting-phone"
+                class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700 font-medium"
+                placeholder="628123456789">
+            </div>
+            <p class="text-xs text-slate-400 mt-2">Will be used to identify your orders and receive chats.</p>
+          </div>
+        </div>
+        <button onclick="saveSettings()"
+          class="w-full mt-6 bg-indigo-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all flex items-center justify-center gap-2">
+          <i class="fas fa-save"></i> Save Profile
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/main.js?v=3"></script>
+</body>
+
+</html>
