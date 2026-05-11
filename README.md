@@ -4,8 +4,13 @@ ElektroMarket is a lightweight web marketplace for electronics buyers and seller
 
 ## Live Pages
 
+- Buyer Page: https://elektromarket.wuaze.com/
+- Seller Page: https://elektromarket.wuaze.com/seller.html
+  
+<!--
 - Buyer page: https://elektromarket.wuaze.com/
 - Seller page: https://elektromarket.wuaze.com/seller.html
+-->
 
 ## Overview
 
